@@ -23,6 +23,8 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using EnvDTE;
 using EnvDTE80;
+using Microsoft.VisualStudio.Shell;
+using Microsoft.Win32;
 
 namespace FASTBuildMonitorVSIX
 {
@@ -35,6 +37,8 @@ namespace FASTBuildMonitorVSIX
         private static List<Rectangle> _bars = new List<Rectangle>();
 
         public static FASTBuildMonitorControl _StaticWindow = null;
+
+        public ResourceDictionary Theme => Resources.MergedDictionaries[0];
 
         public FASTBuildMonitorControl()
         {
@@ -53,7 +57,7 @@ namespace FASTBuildMonitorVSIX
             TextUtils.StaticInitialize();
 
             // Time bar display
-            _timeBar = new TimeBar(TimeBarCanvas);
+            _timeBar = new TimeBar(TimeBarCanvas, Theme);
 
             // System Graphs display
             _systemPerformanceGraphs = new SystemPerformanceGraphsCanvas(SystemGraphsCanvas);
@@ -87,6 +91,9 @@ namespace FASTBuildMonitorVSIX
 
             OutputWindowComboBox.SelectionChanged += OutputWindowComboBox_SelectionChanged;
 
+            SettingsGraphsCheckBox.IsChecked = LoadSetting(nameof(SettingsGraphsCheckBox));
+            SettingsDarkTheme.IsChecked = LoadSetting(nameof(SettingsDarkTheme));
+
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
             {
                 //update timer
@@ -100,12 +107,48 @@ namespace FASTBuildMonitorVSIX
         /* Settings Tab Check boxes */
         private void checkBox_Checked(object sender, RoutedEventArgs e)
         {
-            _systemPerformanceGraphs.SetVisibility((bool)(sender as CheckBox).IsChecked);
+            var control = sender as Control;
+            if (control == null)
+            {
+                return;
+            }
+
+            switch (control.Name)
+            {
+                case nameof(SettingsGraphsCheckBox):
+                    _systemPerformanceGraphs.SetVisibility((bool)(sender as CheckBox).IsChecked);
+                    break;
+
+                case nameof(SettingsDarkTheme):
+                    UpdateTheme();
+                    break;
+            }
+
+            var isEnabled = (sender as CheckBox)?.IsChecked == true;
+            SaveSetting(control.Name, isEnabled);
         }
 
         private void checkBox_Unchecked(object sender, RoutedEventArgs e)
         {
-            _systemPerformanceGraphs.SetVisibility((bool)(sender as CheckBox).IsChecked);
+            var control = sender as Control;
+            if (control == null)
+            {
+                return;
+            }
+
+            switch (control.Name)
+            {
+                case nameof(SettingsGraphsCheckBox):
+                    _systemPerformanceGraphs.SetVisibility((bool)(sender as CheckBox).IsChecked);
+                    break;
+
+                case nameof(SettingsDarkTheme):
+                    UpdateTheme();
+                    break;
+            }
+
+            var isEnabled = (sender as CheckBox)?.IsChecked == true;
+            SaveSetting(nameof(SettingsGraphsCheckBox), isEnabled);
         }
 
 
@@ -189,6 +232,64 @@ namespace FASTBuildMonitorVSIX
                     }
                 }
             }
+        }
+
+        public void UpdateTheme()
+        {
+            var isDark = SettingsDarkTheme.IsChecked == true;
+
+            Resources.MergedDictionaries.Clear();
+            Resources.MergedDictionaries.Add(isDark
+                ? new ResourceDictionary()
+                {
+                    Source = new Uri(
+                        "pack://application:,,,/FASTBuildMonitorVSIX;component/Resources/Themes/DarkTheme.xaml")
+                }
+                : new ResourceDictionary()
+                {
+                    Source = new Uri(
+                        "pack://application:,,,/FASTBuildMonitorVSIX;component/Resources/Themes/DefaultTheme.xaml")
+                });
+
+            _timeBar.UpdateTheme(Theme);
+            _localHost?.UpdateTheme(Theme);
+
+            foreach (DictionaryEntry entry in _hosts)
+            {
+                var host = entry.Value as BuildHost;
+                host?.UpdateTheme(Theme);
+            }
+        }
+
+        private void SaveSetting(string settingName, bool enabled)
+        {
+            var softwareKey = Registry.CurrentUser.OpenSubKey("Software", true);
+            if (softwareKey == null)
+            {
+                return;
+            }
+
+            var key = softwareKey.OpenSubKey("FastBuildMonitor", true);
+            if (key == null)
+            {
+                softwareKey.CreateSubKey("FastBuildMonitor");
+                key = softwareKey.OpenSubKey("FastBuildMonitor", true);
+            }
+
+            key?.SetValue(settingName, enabled ? 1 : 0);
+        }
+
+        private bool LoadSetting(string settingName)
+        {
+            var softwareKey = Registry.CurrentUser.OpenSubKey("Software", true);
+
+            var key = softwareKey?.OpenSubKey("FastBuildMonitor", true);
+            if (key == null)
+            {
+                return false;
+            }
+
+            return ((int) key.GetValue(settingName, 0)) == 1;
         }
 
         /* Output Window Filtering & Combo box management */
@@ -750,7 +851,7 @@ namespace FASTBuildMonitorVSIX
             _StaticWindow.CoresCanvas.Children.Clear();
 
             // Start by adding a local host
-            _localHost = new BuildHost(_cLocalHostName);
+            _localHost = new BuildHost(_cLocalHostName, Theme);
             _hosts.Add(_cLocalHostName, _localHost);
 
             // Always add the prepare build steps event first
@@ -1089,13 +1190,14 @@ namespace FASTBuildMonitorVSIX
 
 
             //......................
-            public CPUCore(BuildHost parent, int coreIndex)
+            public CPUCore(BuildHost parent, int coreIndex, ResourceDictionary theme)
             {
                 _parent = parent;
 
                 _coreIndex = coreIndex;
 
                 _textBlock.Text = string.Format("{0} (Core # {1})", parent._name, _coreIndex);
+                _textBlock.Foreground = theme["ForegroundColor"] as SolidColorBrush;
 
                 _StaticWindow.CoresCanvas.Children.Add(_textBlock);
 
@@ -1253,6 +1355,11 @@ namespace FASTBuildMonitorVSIX
 
                 Y += 25;
             }
+
+            public void UpdateTheme(ResourceDictionary theme)
+            {
+                _textBlock.Foreground = theme["ForegroundColor"] as SolidColorBrush;
+            }
         }
 
 
@@ -1265,9 +1372,12 @@ namespace FASTBuildMonitorVSIX
             //WPF stuff
             public Line _lineSeparator = new Line();
 
-            public BuildHost(string name)
+            ResourceDictionary _theme;
+
+            public BuildHost(string name, ResourceDictionary theme)
             {
                 _name = name;
+                _theme = theme;
 
                 bLocalHost = name.Contains(_cLocalHostName);
 
@@ -1301,7 +1411,7 @@ namespace FASTBuildMonitorVSIX
                 // we discovered a new core
                 if (!bAssigned)
                 {
-                    CPUCore core = new CPUCore(this, _cores.Count);
+                    CPUCore core = new CPUCore(this, _cores.Count, _theme);
 
                     core.ScheduleEvent(newEvent);
 
@@ -1406,6 +1516,15 @@ namespace FASTBuildMonitorVSIX
                 Y += 20;
 
                 UpdateEventsCanvasMaxSize(X, Y);
+            }
+
+            public void UpdateTheme(ResourceDictionary theme)
+            {
+                _theme = theme;
+                foreach (var core in _cores)
+                {
+                    core.UpdateTheme(theme);
+                }
             }
         }
 
@@ -2307,7 +2426,7 @@ namespace FASTBuildMonitorVSIX
             else
             {
                 // discovered a new host!
-                host = new BuildHost(hostName);
+                host = new BuildHost(hostName, Theme);
                 _hosts.Add(hostName, host);
             }
 
