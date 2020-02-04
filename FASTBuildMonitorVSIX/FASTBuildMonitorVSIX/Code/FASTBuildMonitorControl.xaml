@@ -130,7 +130,7 @@
                         <Grid >
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>                                
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition/>
                             </Grid.RowDefinitions>
                             <TextBlock x:Name="AboutTextBlock" Height="auto" TextWrapping="Wrap" Margin="5,2,3,0" VerticalAlignment="Top" Grid.Row="0" Foreground="{DynamicResource ForegroundColor}"/>
@@ -143,7 +143,7 @@
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Orientation = "Horizontal" Grid.Row="2">
-                                <TextBlock  Text="GitHub:"  Height="auto" TextWrapping="Wrap" Margin="5,2,3,0" VerticalAlignment="Top" Foreground="{DynamicResource ForegroundColor}" />                                
+                                <TextBlock  Text="GitHub:"  Height="auto" TextWrapping="Wrap" Margin="5,2,3,0" VerticalAlignment="Top" Foreground="{DynamicResource ForegroundColor}" />
                                 <TextBlock x:Name="AboutLinksTextBlock2" Height="auto" TextWrapping="Wrap" Margin="5,2,3,0" VerticalAlignment="Top">
                                         <Hyperlink NavigateUri="https://github.com/yass007/FASTBuildMonitor" RequestNavigate="Hyperlink_RequestNavigate">
                                             https://github.com/yass007/FASTBuildMonitor
